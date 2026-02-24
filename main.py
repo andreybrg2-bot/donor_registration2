@@ -60,7 +60,7 @@ class Config:
     
     # URL Google Apps Script
     GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL", 
-        "https://script.google.com/macros/s/AKfycbx0rxsIjH2sipPlji6t2HF28kOo7GET5c6_T8tdxSOBykOpCfN1Trd9-29I87cczKQo/exec")
+        "https://script.google.com/macros/s/AKfycbyZBk0Byb-y1Z50r1r35kUXChNvJKsNO8ZUhoHOd2vVLQA3QK_XS9RyltNGCzXzKFZ-/exec")
     
     # ID администраторов (из переменных окружения, разделенных запятыми)
     ADMIN_IDS = [int(id.strip()) for id in os.getenv("ADMIN_IDS", "5097581039").split(",") if id.strip()]
