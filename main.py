@@ -1,6 +1,6 @@
 """
 🎯 БОТ ДЛЯ ЗАПИСИ НА ДОНОРСТВО КРОВИ
-Версия: 4.2 (ИСПРАВЛЕНЫ КРИТИЧЕСКИЕ ОШИБКИ)
+Версия: 4.3 (ИСПРАВЛЕНЫ ВСЕ ОШИБКИ)
 """
 
 import os
@@ -13,7 +13,7 @@ import ssl
 from datetime import datetime, timedelta
 from collections import defaultdict
 from typing import Dict, List, Optional, Any, Union
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from enum import Enum
 
 import aiohttp
@@ -166,6 +166,7 @@ class LocalStorage:
         ]
         self.quotas = self._get_default_quotas()
         self._add_test_data()
+        print("[LOCAL] Локальное хранилище инициализировано")
     
     def _get_default_quotas(self):
         base = {"A+": 10, "A-": 5, "B+": 10, "B-": 5, "AB+": 5, "AB-": 3, "O+": 10, "O-": 5}
@@ -186,6 +187,7 @@ class LocalStorage:
             date_str = date.strftime("%Y-%m-%d")
             day = self._get_day_of_week_ru(date)
             self._add_booking_sync(user_id, date_str, time_slot, blood_group, day)
+        print(f"[LOCAL] Добавлено тестовых записей: {len(test_data)}")
     
     def _add_booking_sync(self, user_id, date, time_slot, blood_group, day):
         ticket = f"Т-{day[:3]}-{blood_group}-{random.randint(1000, 9999)}"
@@ -306,8 +308,13 @@ class LocalStorage:
                 day_stats[b.day] = day_stats.get(b.day, 0) + 1
                 blood_stats[b.blood_group] = blood_stats.get(b.blood_group, 0) + 1
         
-        most_popular_day = max(day_stats.items(), key=lambda x: x[1])[0] if day_stats else "нет данных"
-        most_popular_blood = max(blood_stats.items(), key=lambda x: x[1])[0] if blood_stats else "нет данных"
+        most_popular_day = "нет данных"
+        most_popular_blood = "нет данных"
+        
+        if day_stats:
+            most_popular_day = max(day_stats.items(), key=lambda x: x[1])[0]
+        if blood_stats:
+            most_popular_blood = max(blood_stats.items(), key=lambda x: x[1])[0]
         
         return ApiResponse.success({
             "total_bookings": total_bookings,
@@ -491,15 +498,6 @@ def get_main_menu_keyboard() -> InlineKeyboardMarkup:
     )
     return builder.as_markup()
 
-def get_admin_keyboard() -> InlineKeyboardMarkup:
-    builder = InlineKeyboardBuilder()
-    builder.row(
-        InlineKeyboardButton(text="🗑️ Очистить кэш", callback_data=CallbackData.ADMIN_CLEAR_CACHE),
-        InlineKeyboardButton(text="🔄 Обновить кэш", callback_data=CallbackData.ADMIN_REFRESH_CACHE)
-    )
-    builder.row(InlineKeyboardButton(text="🔙 В главное меню", callback_data=CallbackData.MAIN_MENU))
-    return builder.as_markup()
-
 def get_confirm_cancellation_keyboard(date: str, ticket: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -517,7 +515,7 @@ async def start_command(message: types.Message, state: FSMContext):
     await state.clear()
     session_timeout.update(user.id)
     
-    text = (f"🎯 *Донорская станция v4.2*\n"
+    text = (f"🎯 *Донорская станция v4.3*\n"
             f"👋 Привет, {user.first_name or 'пользователь'}!\n\n"
             f"Я помогу вам записаться на донорство крови.\n"
             f"*Выберите действие:*")
@@ -812,11 +810,6 @@ async def cancel_command(message: types.Message, state: FSMContext):
 async def show_main_menu(message: types.Message):
     await message.answer("🎯 *Главное меню*", parse_mode="Markdown", reply_markup=get_main_menu_keyboard())
 
-async def show_main_menu_from_callback(callback: CallbackQuery):
-    await callback.message.edit_text(
-        "🎯 *Главное меню*", parse_mode="Markdown", reply_markup=get_main_menu_keyboard()
-    )
-
 async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
     user = callback.from_user
     session_timeout.update(user.id)
@@ -852,12 +845,22 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
             )
         return await callback.answer()
 
+# ========== КОМАНДЫ (ОБЯЗАТЕЛЬНО ДОБАВЛЯЕМ) ==========
+async def mybookings_command(message: types.Message, state: FSMContext):
+    """Команда /mybookings - показать записи пользователя"""
+    user = message.from_user
+    await show_my_bookings(message, user)
+
+async def stats_command(message: types.Message, state: FSMContext):
+    """Команда /stats - показать статистику"""
+    await show_stats(message)
+
 # ========== ЗАПУСК ==========
 async def main():
     logging.basicConfig(level=logging.INFO)
     
     print("=" * 50)
-    print("🚀 ЗАПУСК БОТА v4.2")
+    print("🚀 ЗАПУСК БОТА v4.3")
     print("=" * 50)
     
     if Config.MODE in ["GOOGLE", "HYBRID"]:
@@ -879,13 +882,14 @@ async def main():
     bot = Bot(token=Config.TOKEN, session=session)
     dp = Dispatcher(storage=MemoryStorage())
     
-    # Регистрация
+    # Регистрация команд
     dp.message.register(start_command, Command("start"))
     dp.message.register(cancel_command, Command("cancel"))
     dp.message.register(help_command, Command("help"))
     dp.message.register(mybookings_command, Command("mybookings"))
     dp.message.register(stats_command, Command("stats"))
     
+    # Регистрация callback-обработчиков
     dp.callback_query.register(process_main_menu, F.data.in_([
         CallbackData.MAIN_RECORD, CallbackData.MAIN_CHECK,
         CallbackData.MAIN_MYBOOKINGS, CallbackData.MAIN_STATS, CallbackData.MAIN_HELP
@@ -894,16 +898,18 @@ async def main():
     dp.callback_query.register(process_date, Form.waiting_for_date)
     dp.callback_query.register(process_time, Form.waiting_for_time)
     dp.callback_query.register(process_cancel_booking)
-    dp.callback_query.register(show_main_menu_from_callback, F.data == CallbackData.MAIN_MENU)
+    dp.callback_query.register(show_main_menu, F.data == CallbackData.MAIN_MENU)
     
     print("✅ Бот готов")
     print("=" * 50)
     
     try:
         await dp.start_polling(bot)
+    except KeyboardInterrupt:
+        print("\n⚠️ Бот остановлен")
     finally:
         await aiohttp_session.close()
+        print("✅ Сессии закрыты")
 
 if __name__ == "__main__":
     asyncio.run(main())
-    
