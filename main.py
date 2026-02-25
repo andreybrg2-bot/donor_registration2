@@ -46,9 +46,6 @@ from dotenv import load_dotenv
 # Загружаем переменные окружения из .env файла
 load_dotenv()
 
-#from pathlib import Path
-#load_dotenv(dotenv_path=Path(__file__).parent / '.env')
-
 # ========== КОНФИГУРАЦИЯ ==========
 class Config:
     """Конфигурация бота с валидацией"""
@@ -56,7 +53,7 @@ class Config:
     # Токен из переменных окружения
     #TOKEN = os.getenv("BOT_TOKEN")
     #if not TOKEN:
-    #    raise ValueError("BOT_TOKEN не найден в переменных окружения!")
+     #   raise ValueError("BOT_TOKEN не найден в переменных окружения!")
     
     # Режим работы (LOCAL, GOOGLE, HYBRID)
     MODE = os.getenv("BOT_MODE", "GOOGLE")
@@ -1166,7 +1163,7 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
     await state.set_state(Form.waiting_for_date)
     await callback.answer(f"Выбрана группа крови {blood_group}")
 
-async  def  process_date(callback: CallbackQuery, state: FSMContext):
+async def process_date(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора даты"""
     user = callback.from_user
     
@@ -1458,7 +1455,7 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     await callback.answer("✅ Запись успешно оформлена!")
 
 # ========== ФУНКЦИИ КОМАНД ==========
-async  def  cancel_command(message: types.Message, state: FSMContext):
+async def cancel_command(message: types.Message, state: FSMContext):
     """Команда /cancel - отмена текущего диалога"""
     current_state = await state.get_state()
     
@@ -1525,7 +1522,7 @@ async def mybookings_command(message: types.Message):
     user = message.from_user
     await show_my_bookings(message, user)
 
-async  def  show_my_bookings(message: types.Message, user: types.User):
+async def show_my_bookings(message: types.Message, user: types.User):
     """Показать записи пользователя"""
     response = await storage.get_user_bookings(user.id)
     
@@ -1588,7 +1585,7 @@ async def stats_command(message: types.Message):
     """Команда /stats - показать статистику"""
     await show_stats(message)
 
-async  def  show_stats(message: types.Message):
+async def show_stats(message: types.Message):
     """Показать статистику"""
     stats_response = await storage.get_stats()
     
@@ -2253,4 +2250,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-
