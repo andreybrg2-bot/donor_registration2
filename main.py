@@ -14,7 +14,7 @@
 ✅ Константы вынесены в отдельный класс
 ✅ Исправлена обработка ошибок (всегда строка в data)
 """
-
+pkill -f main.py
 import os
 import logging
 import asyncio
