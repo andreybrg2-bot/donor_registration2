@@ -46,14 +46,17 @@ from dotenv import load_dotenv
 # Загружаем переменные окружения из .env файла
 load_dotenv()
 
+#from pathlib import Path
+#load_dotenv(dotenv_path=Path(__file__).parent / '.env')
+
 # ========== КОНФИГУРАЦИЯ ==========
 class Config:
     """Конфигурация бота с валидацией"""
-    
+    TOKEN = "8751501208:AAGz5-2mDHZpE_cmQqo3DzfvK6X9rga97n4"
     # Токен из переменных окружения
-    TOKEN = os.getenv("BOT_TOKEN")
-    if not TOKEN:
-        raise ValueError("BOT_TOKEN не найден в переменных окружения!")
+    #TOKEN = os.getenv("BOT_TOKEN")
+    #if not TOKEN:
+    #    raise ValueError("BOT_TOKEN не найден в переменных окружения!")
     
     # Режим работы (LOCAL, GOOGLE, HYBRID)
     MODE = os.getenv("BOT_MODE", "GOOGLE")
@@ -2250,3 +2253,4 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+
