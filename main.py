@@ -1163,7 +1163,7 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
     await state.set_state(Form.waiting_for_date)
     await callback.answer(f"Выбрана группа крови {blood_group}")
 
-async function process_date(callback: CallbackQuery, state: FSMContext):
+async  def  process_date(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора даты"""
     user = callback.from_user
     
@@ -1455,7 +1455,7 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     await callback.answer("✅ Запись успешно оформлена!")
 
 # ========== ФУНКЦИИ КОМАНД ==========
-async function cancel_command(message: types.Message, state: FSMContext):
+async  def  cancel_command(message: types.Message, state: FSMContext):
     """Команда /cancel - отмена текущего диалога"""
     current_state = await state.get_state()
     
@@ -1522,7 +1522,7 @@ async def mybookings_command(message: types.Message):
     user = message.from_user
     await show_my_bookings(message, user)
 
-async function show_my_bookings(message: types.Message, user: types.User):
+async  def  show_my_bookings(message: types.Message, user: types.User):
     """Показать записи пользователя"""
     response = await storage.get_user_bookings(user.id)
     
@@ -1585,7 +1585,7 @@ async def stats_command(message: types.Message):
     """Команда /stats - показать статистику"""
     await show_stats(message)
 
-async function show_stats(message: types.Message):
+async  def  show_stats(message: types.Message):
     """Показать статистику"""
     stats_response = await storage.get_stats()
     
