@@ -33,7 +33,8 @@ load_dotenv()
 
 # ========== КОНФИГУРАЦИЯ ==========
 class Config:
-    TOKEN = os.getenv("BOT_TOKEN", "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ")
+    #TOKEN = os.getenv("BOT_TOKEN", "8598969347:AAEqsFqoW0sTO1yeKF49DHIB4-VlOsOESMQ")
+    TOKEN ="AAGz5-2mDHZpE_cmQqo3DzfvK6X9rga97n4"
     MODE = os.getenv("BOT_MODE", "GOOGLE")
     GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL",
         "https://script.google.com/macros/s/AKfycbyZBk0Byb-y1Z50r1r35kUXChNvJKsNO8ZUhoHOd2vVLQA3QK_XS9RyltNGCzXzKFZ-/exec")
