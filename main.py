@@ -556,25 +556,49 @@ async def process_main_menu(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 async def process_blood_group(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора группы крови"""
     user = callback.from_user
     session_timeout.update(user.id)
     
+    # ОТЛАДКА
+    print(f"🔍 process_blood_group: callback.data = '{callback.data}'")
+    
+    # Обработка системных кнопок
     if callback.data == CallbackData.CANCEL:
         await cancel_command(callback.message, state)
-        return await callback.answer()
+        await callback.answer()
+        return
     
     if callback.data == CallbackData.MAIN_MENU:
         await show_main_menu(callback.message)
         await state.clear()
-        return await callback.answer()
+        await callback.answer()
+        return
     
-    if not CallbackData.is_blood(callback.data):
-        return await callback.answer("Выберите группу крови", show_alert=True)
+    # ВАЖНО: обработка кнопки "Назад"
+    if callback.data == CallbackData.BACK_TO_BLOOD:
+        await callback.answer()
+        return
     
+    # Проверка на префикс группы крови
+    if not callback.data.startswith(CallbackData.BLOOD_PREFIX):
+        await callback.answer("Пожалуйста, выберите группу крови", show_alert=True)
+        return
+    
+    # Извлекаем группу крови
     blood = callback.data[len(CallbackData.BLOOD_PREFIX):]
+    if not blood:
+        await callback.answer("Ошибка: пустая группа крови", show_alert=True)
+        return
+    
+    print(f"✅ Выбрана группа крови: '{blood}'")
     await state.update_data(blood_group=blood)
     
+    # Получаем данные о действии (запись или проверка)
     data = await state.get_data()
+    is_check = data.get('is_check', False)
+    
+    # Получаем доступные даты
     resp = await storage.get_available_dates(user.id)
     
     if resp.status == 'error':
@@ -583,18 +607,21 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
             reply_markup=get_main_menu_keyboard()
         )
         await state.clear()
-        return await callback.answer()
+        await callback.answer()
+        return
     
     dates = resp.data.get('available_dates', [])
+    
     if not dates:
         await callback.message.edit_text(
             "😔 Нет доступных дат",
             reply_markup=get_main_menu_keyboard()
         )
         await state.clear()
-        return await callback.answer()
+        await callback.answer()
+        return
     
-    action = "проверки" if data.get('is_check') else "записи"
+    action = "проверки" if is_check else "записи"
     text = f"📅 *Выберите дату для {action}:*\n🩸 Группа: {blood}"
     
     await callback.message.edit_text(
