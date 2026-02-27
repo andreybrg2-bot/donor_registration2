@@ -627,38 +627,64 @@ async def process_main_menu(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 async def process_blood_group(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора группы крови"""
     user = callback.from_user
     session_timeout.update(user.id)
-
+    
+    # ДИАГНОСТИКА - показываем что пришло
+    print(f"🔍 DIAG: process_blood_group вызван с callback.data = '{callback.data}'")
+    
     # Обработка системных кнопок
     if callback.data == CallbackData.CANCEL:
+        print("🔍 DIAG: нажата кнопка CANCEL")
         await cancel_command(callback.message, state)
         await callback.answer()
         return
-
+    
     if callback.data == CallbackData.MAIN_MENU:
+        print("🔍 DIAG: нажата кнопка MAIN_MENU")
         await show_main_menu(callback.message)
         await state.clear()
         await callback.answer()
         return
-
+    
     if callback.data == CallbackData.BACK_TO_BLOOD:
+        print("🔍 DIAG: нажата кнопка BACK_TO_BLOOD")
         await callback.answer()
         return
-
-    if not CallbackData.is_blood(callback.data):
+    
+    # Проверка на префикс группы крови
+    if not callback.data.startswith(CallbackData.BLOOD_PREFIX):
+        print(f"❌ DIAG: callback.data не начинается с {CallbackData.BLOOD_PREFIX}")
+        print(f"❌ DIAG: ожидался формат вида '{CallbackData.BLOOD_PREFIX}A+'")
         await callback.answer("Пожалуйста, выберите группу крови", show_alert=True)
         return
-
+    
+    # Извлекаем группу крови
     blood = callback.data[len(CallbackData.BLOOD_PREFIX):]
+    print(f"✅ DIAG: извлечена группа крови: '{blood}'")
+    
+    if not blood:
+        print("❌ DIAG: группа крови пустая после извлечения")
+        await callback.answer("Ошибка: пустая группа крови", show_alert=True)
+        return
+    
+    # Сохраняем группу крови
     await state.update_data(blood_group=blood)
-
+    print(f"✅ DIAG: группа крови сохранена в state")
+    
+    # Получаем данные о действии (запись или проверка)
     data = await state.get_data()
     is_check = data.get('is_check', False)
-
+    print(f"✅ DIAG: is_check = {is_check}")
+    
+    # Получаем доступные даты
+    print(f"🔄 DIAG: запрашиваем доступные даты для user_id={user.id}")
     resp = await storage.get_available_dates(user.id)
-
+    print(f"🔄 DIAG: ответ получен, status={resp.status}")
+    
     if resp.status == 'error':
+        print(f"❌ DIAG: ошибка получения дат: {resp.data}")
         await callback.message.edit_text(
             f"❌ Ошибка: {resp.data}",
             reply_markup=get_main_menu_keyboard()
@@ -666,9 +692,12 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         await callback.answer()
         return
-
+    
     dates = resp.data.get('available_dates', [])
+    print(f"✅ DIAG: получено дат: {len(dates)}")
+    
     if not dates:
+        print("❌ DIAG: нет доступных дат")
         await callback.message.edit_text(
             "😔 Нет доступных дат",
             reply_markup=get_main_menu_keyboard()
@@ -676,10 +705,11 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         await callback.answer()
         return
-
+    
     action = "проверки" if is_check else "записи"
     text = f"📅 *Выберите дату для {action}:*\n🩸 Группа: {blood}"
-
+    print(f"✅ DIAG: показываем клавиатуру с датами")
+    
     await callback.message.edit_text(
         text, parse_mode="Markdown", reply_markup=get_dates_keyboard(dates)
     )
