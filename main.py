@@ -1,6 +1,6 @@
 """
 🎯 БОТ ДЛЯ ЗАПИСИ НА ДОНОРСТВО КРОВИ
-Версия: 5.0 (ФИНАЛЬНАЯ, ИСПРАВЛЕНА)
+Версия: 5.1 (ФИНАЛЬНАЯ, УНИВЕРСАЛЬНЫЙ ПАРСЕР)
 Основана на архитектуре v4.3 + добавлены недостающие обработчики из v3.5
 """
 
@@ -586,7 +586,7 @@ async def start_command(message: types.Message, state: FSMContext):
     if Config.MODE in ["GOOGLE", "HYBRID"]:
         storage.clear_cache()
 
-    text = (f"🎯 *Донорская станция v5.0*\n"
+    text = (f"🎯 *Донорская станция v5.1*\n"
             f"👋 Привет, {user.first_name or 'пользователь'}!\n\n"
             f"Я помогу вам записаться на донорство крови.\n"
             f"*Выберите действие:*")
@@ -626,63 +626,74 @@ async def process_main_menu(callback: CallbackQuery, state: FSMContext):
 
     await callback.answer()
 
+# ========== УНИВЕРСАЛЬНОЕ ИЗВЛЕЧЕНИЕ ГРУППЫ КРОВИ ==========
+def extract_blood_group(callback_data: str) -> Optional[str]:
+    """Извлекает группу крови из callback_data любого формата"""
+    # 1. Правильный формат с префиксом blood_
+    if callback_data.startswith('blood_'):
+        return callback_data[6:]
+
+    # 2. Неправильный формат с текстом "CallbackData.BLOOD_PREFIX"
+    if callback_data.startswith('CallbackData.BLOOD_PREFIX'):
+        return callback_data.replace('CallbackData.BLOOD_PREFIX', '')
+
+    # 3. Прямая группа крови (без префикса)
+    valid_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+    if callback_data in valid_groups:
+        return callback_data
+
+    return None
+
 async def process_blood_group(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора группы крови"""
     user = callback.from_user
     session_timeout.update(user.id)
-    
-    # ДИАГНОСТИКА - показываем что пришло
+
+    # ДИАГНОСТИКА
     print(f"🔍 DIAG: process_blood_group вызван с callback.data = '{callback.data}'")
-    
+
     # Обработка системных кнопок
     if callback.data == CallbackData.CANCEL:
         print("🔍 DIAG: нажата кнопка CANCEL")
         await cancel_command(callback.message, state)
         await callback.answer()
         return
-    
+
     if callback.data == CallbackData.MAIN_MENU:
         print("🔍 DIAG: нажата кнопка MAIN_MENU")
         await show_main_menu(callback.message)
         await state.clear()
         await callback.answer()
         return
-    
+
     if callback.data == CallbackData.BACK_TO_BLOOD:
         print("🔍 DIAG: нажата кнопка BACK_TO_BLOOD")
         await callback.answer()
         return
-    
-    # Проверка на префикс группы крови
-    if not callback.data.startswith(CallbackData.BLOOD_PREFIX):
-        print(f"❌ DIAG: callback.data не начинается с {CallbackData.BLOOD_PREFIX}")
-        print(f"❌ DIAG: ожидался формат вида '{CallbackData.BLOOD_PREFIX}A+'")
+
+    # Извлекаем группу крови
+    blood = extract_blood_group(callback.data)
+
+    if not blood:
+        print(f"❌ DIAG: не удалось извлечь группу крови из '{callback.data}'")
         await callback.answer("Пожалуйста, выберите группу крови", show_alert=True)
         return
-    
-    # Извлекаем группу крови
-    blood = callback.data[len(CallbackData.BLOOD_PREFIX):]
+
     print(f"✅ DIAG: извлечена группа крови: '{blood}'")
-    
-    if not blood:
-        print("❌ DIAG: группа крови пустая после извлечения")
-        await callback.answer("Ошибка: пустая группа крови", show_alert=True)
-        return
-    
+
     # Сохраняем группу крови
     await state.update_data(blood_group=blood)
-    print(f"✅ DIAG: группа крови сохранена в state")
-    
+
     # Получаем данные о действии (запись или проверка)
     data = await state.get_data()
     is_check = data.get('is_check', False)
     print(f"✅ DIAG: is_check = {is_check}")
-    
+
     # Получаем доступные даты
     print(f"🔄 DIAG: запрашиваем доступные даты для user_id={user.id}")
     resp = await storage.get_available_dates(user.id)
     print(f"🔄 DIAG: ответ получен, status={resp.status}")
-    
+
     if resp.status == 'error':
         print(f"❌ DIAG: ошибка получения дат: {resp.data}")
         await callback.message.edit_text(
@@ -692,10 +703,10 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         await callback.answer()
         return
-    
+
     dates = resp.data.get('available_dates', [])
     print(f"✅ DIAG: получено дат: {len(dates)}")
-    
+
     if not dates:
         print("❌ DIAG: нет доступных дат")
         await callback.message.edit_text(
@@ -705,11 +716,11 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
         await state.clear()
         await callback.answer()
         return
-    
+
     action = "проверки" if is_check else "записи"
     text = f"📅 *Выберите дату для {action}:*\n🩸 Группа: {blood}"
     print(f"✅ DIAG: показываем клавиатуру с датами")
-    
+
     await callback.message.edit_text(
         text, parse_mode="Markdown", reply_markup=get_dates_keyboard(dates)
     )
@@ -865,7 +876,7 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
 
     ticket_data = resp.data
 
-    # Обновляем квоту после регистрации (как в рабочей версии)
+    # Обновляем квоту после регистрации
     updated_times = await storage.get_free_times(date, blood)
     if updated_times.status == 'success':
         ticket_data['quota_remaining'] = updated_times.data.get('quota', 0)
@@ -1010,13 +1021,10 @@ async def refresh_cache_command(message: types.Message, state: FSMContext):
 
 # ========== ЗАПУСК ==========
 async def main():
-    # ... до создания диспетчера
-    bot = Bot(token=Config.TOKEN)
-    await bot.delete_webhook(drop_pending_updates=True)  # очистить очередь
     logging.basicConfig(level=logging.INFO)
 
     print("=" * 50)
-    print("🚀 ЗАПУСК БОТА v5.0")
+    print("🚀 ЗАПУСК БОТА v5.1")
     print("=" * 50)
 
     if Config.MODE in ["GOOGLE", "HYBRID"]:
@@ -1031,47 +1039,46 @@ async def main():
 
     context = ssl.create_default_context()
     connector = aiohttp.TCPConnector(ssl=context)
-    aiohttp_session = aiohttp.ClientSession(connector=connector)
-    session = AiohttpSession()
-    session._session = aiohttp_session
+    async with aiohttp.ClientSession(connector=connector) as aiohttp_session:
+        session = AiohttpSession()
+        session._session = aiohttp_session
 
-    bot = Bot(token=Config.TOKEN, session=session)
-    dp = Dispatcher(storage=MemoryStorage())
+        bot = Bot(token=Config.TOKEN, session=session)
+        dp = Dispatcher(storage=MemoryStorage())
 
-    # Middleware
-    dp.update.middleware(timeout_middleware)
+        # Middleware
+        dp.update.middleware(timeout_middleware)
 
-    # Команды
-    dp.message.register(start_command, Command("start"))
-    dp.message.register(cancel_command, Command("cancel"))
-    dp.message.register(help_command, Command("help"))
-    dp.message.register(mybookings_command, Command("mybookings"))
-    dp.message.register(stats_command, Command("stats"))
-    dp.message.register(reset_command, Command("reset"))
-    dp.message.register(clear_cache_command, Command("clearcache"))
-    dp.message.register(refresh_cache_command, Command("refresh"))
+        # Команды
+        dp.message.register(start_command, Command("start"))
+        dp.message.register(cancel_command, Command("cancel"))
+        dp.message.register(help_command, Command("help"))
+        dp.message.register(mybookings_command, Command("mybookings"))
+        dp.message.register(stats_command, Command("stats"))
+        dp.message.register(reset_command, Command("reset"))
+        dp.message.register(clear_cache_command, Command("clearcache"))
+        dp.message.register(refresh_cache_command, Command("refresh"))
 
-    # Callback-обработчики
-    dp.callback_query.register(process_main_menu, F.data.in_([
-        CallbackData.MAIN_RECORD, CallbackData.MAIN_CHECK,
-        CallbackData.MAIN_MYBOOKINGS, CallbackData.MAIN_STATS, CallbackData.MAIN_HELP
-    ]))
-    dp.callback_query.register(process_blood_group, Form.waiting_for_blood_group)
-    dp.callback_query.register(process_date, Form.waiting_for_date)
-    dp.callback_query.register(process_time, Form.waiting_for_time)
-    dp.callback_query.register(process_cancel_booking)
-    dp.callback_query.register(show_main_menu, F.data == CallbackData.MAIN_MENU)
+        # Callback-обработчики
+        dp.callback_query.register(process_main_menu, F.data.in_([
+            CallbackData.MAIN_RECORD, CallbackData.MAIN_CHECK,
+            CallbackData.MAIN_MYBOOKINGS, CallbackData.MAIN_STATS, CallbackData.MAIN_HELP
+        ]))
+        dp.callback_query.register(process_blood_group, Form.waiting_for_blood_group)
+        dp.callback_query.register(process_date, Form.waiting_for_date)
+        dp.callback_query.register(process_time, Form.waiting_for_time)
+        dp.callback_query.register(process_cancel_booking)
+        dp.callback_query.register(show_main_menu, F.data == CallbackData.MAIN_MENU)
 
-    print("✅ Бот готов")
-    print("=" * 50)
+        print("✅ Бот готов")
+        print("=" * 50)
 
-    try:
-        await dp.start_polling(bot)
-    except KeyboardInterrupt:
-        print("\n⚠️ Бот остановлен")
-    finally:
-        await aiohttp_session.close()
-        print("✅ Сессии закрыты")
+        try:
+            await dp.start_polling(bot)
+        except KeyboardInterrupt:
+            print("\n⚠️ Бот остановлен")
+        finally:
+            print("✅ Сессии закрыты")
 
 if __name__ == "__main__":
     asyncio.run(main())
