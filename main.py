@@ -1,6 +1,6 @@
 """
 🎯 БОТ ДЛЯ ЗАПИСИ НА ДОНОРСТВО КРОВИ
-Версия: 5.2 (УНИВЕРСАЛЬНЫЙ ПАРСЕР ДЛЯ ГРУПП КРОВИ И ДАТ)
+Версия: 5.3 (ИСПРАВЛЕНА КНОПКА ГЛАВНОГО МЕНЮ)
 """
 
 import os
@@ -576,13 +576,10 @@ async def timeout_middleware(handler, event, data):
 # ========== УНИВЕРСАЛЬНЫЕ ФУНКЦИИ ДЛЯ ИЗВЛЕЧЕНИЯ ==========
 def extract_blood_group(callback_data: str) -> Optional[str]:
     """Извлекает группу крови из callback_data любого формата"""
-    # Правильный формат с префиксом blood_
     if callback_data.startswith('blood_'):
         return callback_data[6:]
-    # Неправильный формат с текстом "CallbackData.BLOOD_PREFIX"
     if callback_data.startswith('CallbackData.BLOOD_PREFIX'):
         return callback_data.replace('CallbackData.BLOOD_PREFIX', '')
-    # Прямая группа крови (без префикса)
     valid_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
     if callback_data in valid_groups:
         return callback_data
@@ -590,23 +587,23 @@ def extract_blood_group(callback_data: str) -> Optional[str]:
 
 def extract_date(callback_data: str) -> Optional[str]:
     """Извлекает дату из callback_data любого формата"""
-    # Правильный формат с префиксом date_
     if callback_data.startswith('date_'):
         return callback_data[5:]
-    # Неправильный формат с текстом "CallbackData.DATE_PREFIX"
     if callback_data.startswith('CallbackData.DATE_PREFIX'):
         return callback_data.replace('CallbackData.DATE_PREFIX', '')
     return None
 
 def extract_time(callback_data: str) -> Optional[str]:
     """Извлекает время из callback_data любого формата"""
-    # Правильный формат с префиксом time_
     if callback_data.startswith('time_'):
         return callback_data[5:]
-    # Неправильный формат с текстом "CallbackData.TIME_PREFIX"
     if callback_data.startswith('CallbackData.TIME_PREFIX'):
         return callback_data.replace('CallbackData.TIME_PREFIX', '')
     return None
+
+def extract_main_menu(callback_data: str) -> bool:
+    """Проверяет, является ли callback_data командой главного меню"""
+    return callback_data in (CallbackData.MAIN_MENU, 'CallbackData.MAIN_MENU', 'main_menu')
 
 # ========== ОБРАБОТЧИКИ ==========
 async def start_command(message: types.Message, state: FSMContext):
@@ -620,7 +617,7 @@ async def start_command(message: types.Message, state: FSMContext):
     if Config.MODE in ["GOOGLE", "HYBRID"]:
         storage.clear_cache()
 
-    text = (f"🎯 *Донорская станция v5.2*\n"
+    text = (f"🎯 *Донорская станция v5.3*\n"
             f"👋 Привет, {user.first_name or 'пользователь'}!\n\n"
             f"Я помогу вам записаться на донорство крови.\n"
             f"*Выберите действие:*")
@@ -661,32 +658,26 @@ async def process_main_menu(callback: CallbackQuery, state: FSMContext):
     await callback.answer()
 
 async def process_blood_group(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора группы крови"""
     user = callback.from_user
     session_timeout.update(user.id)
 
     print(f"🔍 DIAG: process_blood_group вызван с callback.data = '{callback.data}'")
 
-    # Обработка системных кнопок
     if callback.data == CallbackData.CANCEL:
-        print("🔍 DIAG: нажата кнопка CANCEL")
         await cancel_command(callback.message, state)
         await callback.answer()
         return
 
-    if callback.data == CallbackData.MAIN_MENU:
-        print("🔍 DIAG: нажата кнопка MAIN_MENU")
+    if callback.data == CallbackData.MAIN_MENU or extract_main_menu(callback.data):
         await show_main_menu(callback.message)
         await state.clear()
         await callback.answer()
         return
 
     if callback.data == CallbackData.BACK_TO_BLOOD:
-        print("🔍 DIAG: нажата кнопка BACK_TO_BLOOD")
         await callback.answer()
         return
 
-    # Извлекаем группу крови
     blood = extract_blood_group(callback.data)
     if not blood:
         print(f"❌ DIAG: не удалось извлечь группу крови из '{callback.data}'")
@@ -698,14 +689,10 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
 
     data = await state.get_data()
     is_check = data.get('is_check', False)
-    print(f"✅ DIAG: is_check = {is_check}")
 
-    print(f"🔄 DIAG: запрашиваем доступные даты для user_id={user.id}")
     resp = await storage.get_available_dates(user.id)
-    print(f"🔄 DIAG: ответ получен, status={resp.status}")
 
     if resp.status == 'error':
-        print(f"❌ DIAG: ошибка получения дат: {resp.data}")
         await callback.message.edit_text(
             f"❌ Ошибка: {resp.data}",
             reply_markup=get_main_menu_keyboard()
@@ -715,10 +702,7 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
         return
 
     dates = resp.data.get('available_dates', [])
-    print(f"✅ DIAG: получено дат: {len(dates)}")
-
     if not dates:
-        print("❌ DIAG: нет доступных дат")
         await callback.message.edit_text(
             "😔 Нет доступных дат",
             reply_markup=get_main_menu_keyboard()
@@ -729,7 +713,6 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
 
     action = "проверки" if is_check else "записи"
     text = f"📅 *Выберите дату для {action}:*\n🩸 Группа: {blood}"
-    print(f"✅ DIAG: показываем клавиатуру с датами")
 
     await callback.message.edit_text(
         text, parse_mode="Markdown", reply_markup=get_dates_keyboard(dates)
@@ -757,7 +740,6 @@ async def process_date(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    # Извлекаем дату
     date = extract_date(callback.data)
     if not date:
         print(f"❌ DIAG: не удалось извлечь дату из '{callback.data}'")
@@ -770,7 +752,6 @@ async def process_date(callback: CallbackQuery, state: FSMContext):
     blood = data.get('blood_group')
 
     if not blood:
-        print("❌ DIAG: группа крови не найдена в state")
         await callback.message.edit_text("❌ Ошибка", reply_markup=get_main_menu_keyboard())
         await state.clear()
         await callback.answer()
@@ -851,7 +832,6 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    # Извлекаем время
     time_val = extract_time(callback.data)
     if not time_val:
         print(f"❌ DIAG: не удалось извлечь время из '{callback.data}'")
@@ -975,6 +955,12 @@ async def cancel_command(message: types.Message, state: FSMContext):
 async def show_main_menu(message: types.Message):
     await message.answer("🎯 *Главное меню*", parse_mode="Markdown", reply_markup=get_main_menu_keyboard())
 
+# ========== СПЕЦИАЛЬНЫЙ ОБРАБОТЧИК ДЛЯ КНОПКИ ГЛАВНОГО МЕНЮ ==========
+async def process_main_menu_button(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await show_main_menu(callback.message)
+    await callback.answer()
+
 async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
     user = callback.from_user
     session_timeout.update(user.id)
@@ -1013,6 +999,9 @@ async def process_cancel_booking(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
+    # Если ни одно условие не подошло, просто отвечаем, чтобы callback не висел
+    await callback.answer()
+
 # ========== КОМАНДЫ ==========
 async def mybookings_command(message: types.Message, state: FSMContext):
     user = message.from_user
@@ -1046,7 +1035,7 @@ async def main():
     logging.basicConfig(level=logging.INFO)
 
     print("=" * 50)
-    print("🚀 ЗАПУСК БОТА v5.2")
+    print("🚀 ЗАПУСК БОТА v5.3")
     print("=" * 50)
 
     if Config.MODE in ["GOOGLE", "HYBRID"]:
@@ -1081,7 +1070,8 @@ async def main():
         dp.message.register(clear_cache_command, Command("clearcache"))
         dp.message.register(refresh_cache_command, Command("refresh"))
 
-        # Callback-обработчики
+        # Callback-обработчики в порядке приоритета
+        dp.callback_query.register(process_main_menu_button, F.data == CallbackData.MAIN_MENU)
         dp.callback_query.register(process_main_menu, F.data.in_([
             CallbackData.MAIN_RECORD, CallbackData.MAIN_CHECK,
             CallbackData.MAIN_MYBOOKINGS, CallbackData.MAIN_STATS, CallbackData.MAIN_HELP
@@ -1089,8 +1079,8 @@ async def main():
         dp.callback_query.register(process_blood_group, Form.waiting_for_blood_group)
         dp.callback_query.register(process_date, Form.waiting_for_date)
         dp.callback_query.register(process_time, Form.waiting_for_time)
-        dp.callback_query.register(process_cancel_booking)
-        dp.callback_query.register(show_main_menu, F.data == CallbackData.MAIN_MENU)
+        # Фильтр для отмены: только те, что начинаются с префиксов
+        dp.callback_query.register(process_cancel_booking, F.data.startswith(('cancel_', 'admin_')))
 
         print("✅ Бот готов")
         print("=" * 50)
