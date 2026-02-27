@@ -1010,6 +1010,9 @@ async def refresh_cache_command(message: types.Message, state: FSMContext):
 
 # ========== ЗАПУСК ==========
 async def main():
+    # ... до создания диспетчера
+    bot = Bot(token=Config.TOKEN)
+    await bot.delete_webhook(drop_pending_updates=True)  # очистить очередь
     logging.basicConfig(level=logging.INFO)
 
     print("=" * 50)
