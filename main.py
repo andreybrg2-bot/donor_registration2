@@ -1,7 +1,6 @@
 """
 🎯 БОТ ДЛЯ ЗАПИСИ НА ДОНОРСТВО КРОВИ
-Версия: 5.1 (ФИНАЛЬНАЯ, УНИВЕРСАЛЬНЫЙ ПАРСЕР)
-Основана на архитектуре v4.3 + добавлены недостающие обработчики из v3.5
+Версия: 5.2 (УНИВЕРСАЛЬНЫЙ ПАРСЕР ДЛЯ ГРУПП КРОВИ И ДАТ)
 """
 
 import os
@@ -574,6 +573,41 @@ async def timeout_middleware(handler, event, data):
         print(f"[TIMEOUT] Ошибка: {e}")
     return await handler(event, data)
 
+# ========== УНИВЕРСАЛЬНЫЕ ФУНКЦИИ ДЛЯ ИЗВЛЕЧЕНИЯ ==========
+def extract_blood_group(callback_data: str) -> Optional[str]:
+    """Извлекает группу крови из callback_data любого формата"""
+    # Правильный формат с префиксом blood_
+    if callback_data.startswith('blood_'):
+        return callback_data[6:]
+    # Неправильный формат с текстом "CallbackData.BLOOD_PREFIX"
+    if callback_data.startswith('CallbackData.BLOOD_PREFIX'):
+        return callback_data.replace('CallbackData.BLOOD_PREFIX', '')
+    # Прямая группа крови (без префикса)
+    valid_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
+    if callback_data in valid_groups:
+        return callback_data
+    return None
+
+def extract_date(callback_data: str) -> Optional[str]:
+    """Извлекает дату из callback_data любого формата"""
+    # Правильный формат с префиксом date_
+    if callback_data.startswith('date_'):
+        return callback_data[5:]
+    # Неправильный формат с текстом "CallbackData.DATE_PREFIX"
+    if callback_data.startswith('CallbackData.DATE_PREFIX'):
+        return callback_data.replace('CallbackData.DATE_PREFIX', '')
+    return None
+
+def extract_time(callback_data: str) -> Optional[str]:
+    """Извлекает время из callback_data любого формата"""
+    # Правильный формат с префиксом time_
+    if callback_data.startswith('time_'):
+        return callback_data[5:]
+    # Неправильный формат с текстом "CallbackData.TIME_PREFIX"
+    if callback_data.startswith('CallbackData.TIME_PREFIX'):
+        return callback_data.replace('CallbackData.TIME_PREFIX', '')
+    return None
+
 # ========== ОБРАБОТЧИКИ ==========
 async def start_command(message: types.Message, state: FSMContext):
     user = message.from_user
@@ -586,7 +620,7 @@ async def start_command(message: types.Message, state: FSMContext):
     if Config.MODE in ["GOOGLE", "HYBRID"]:
         storage.clear_cache()
 
-    text = (f"🎯 *Донорская станция v5.1*\n"
+    text = (f"🎯 *Донорская станция v5.2*\n"
             f"👋 Привет, {user.first_name or 'пользователь'}!\n\n"
             f"Я помогу вам записаться на донорство крови.\n"
             f"*Выберите действие:*")
@@ -626,30 +660,11 @@ async def process_main_menu(callback: CallbackQuery, state: FSMContext):
 
     await callback.answer()
 
-# ========== УНИВЕРСАЛЬНОЕ ИЗВЛЕЧЕНИЕ ГРУППЫ КРОВИ ==========
-def extract_blood_group(callback_data: str) -> Optional[str]:
-    """Извлекает группу крови из callback_data любого формата"""
-    # 1. Правильный формат с префиксом blood_
-    if callback_data.startswith('blood_'):
-        return callback_data[6:]
-
-    # 2. Неправильный формат с текстом "CallbackData.BLOOD_PREFIX"
-    if callback_data.startswith('CallbackData.BLOOD_PREFIX'):
-        return callback_data.replace('CallbackData.BLOOD_PREFIX', '')
-
-    # 3. Прямая группа крови (без префикса)
-    valid_groups = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
-    if callback_data in valid_groups:
-        return callback_data
-
-    return None
-
 async def process_blood_group(callback: CallbackQuery, state: FSMContext):
     """Обработка выбора группы крови"""
     user = callback.from_user
     session_timeout.update(user.id)
 
-    # ДИАГНОСТИКА
     print(f"🔍 DIAG: process_blood_group вызван с callback.data = '{callback.data}'")
 
     # Обработка системных кнопок
@@ -673,23 +688,18 @@ async def process_blood_group(callback: CallbackQuery, state: FSMContext):
 
     # Извлекаем группу крови
     blood = extract_blood_group(callback.data)
-
     if not blood:
         print(f"❌ DIAG: не удалось извлечь группу крови из '{callback.data}'")
         await callback.answer("Пожалуйста, выберите группу крови", show_alert=True)
         return
 
     print(f"✅ DIAG: извлечена группа крови: '{blood}'")
-
-    # Сохраняем группу крови
     await state.update_data(blood_group=blood)
 
-    # Получаем данные о действии (запись или проверка)
     data = await state.get_data()
     is_check = data.get('is_check', False)
     print(f"✅ DIAG: is_check = {is_check}")
 
-    # Получаем доступные даты
     print(f"🔄 DIAG: запрашиваем доступные даты для user_id={user.id}")
     resp = await storage.get_available_dates(user.id)
     print(f"🔄 DIAG: ответ получен, status={resp.status}")
@@ -731,6 +741,8 @@ async def process_date(callback: CallbackQuery, state: FSMContext):
     user = callback.from_user
     session_timeout.update(user.id)
 
+    print(f"🔍 DIAG: process_date вызван с callback.data = '{callback.data}'")
+
     if callback.data == CallbackData.CANCEL:
         await cancel_command(callback.message, state)
         await callback.answer()
@@ -745,15 +757,20 @@ async def process_date(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    if not CallbackData.is_date(callback.data):
+    # Извлекаем дату
+    date = extract_date(callback.data)
+    if not date:
+        print(f"❌ DIAG: не удалось извлечь дату из '{callback.data}'")
         await callback.answer("Выберите дату", show_alert=True)
         return
 
-    date = callback.data[len(CallbackData.DATE_PREFIX):]
+    print(f"✅ DIAG: извлечена дата: '{date}'")
+
     data = await state.get_data()
     blood = data.get('blood_group')
 
     if not blood:
+        print("❌ DIAG: группа крови не найдена в state")
         await callback.message.edit_text("❌ Ошибка", reply_markup=get_main_menu_keyboard())
         await state.clear()
         await callback.answer()
@@ -814,6 +831,8 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
     user = callback.from_user
     session_timeout.update(user.id)
 
+    print(f"🔍 DIAG: process_time вызван с callback.data = '{callback.data}'")
+
     if callback.data == CallbackData.CANCEL:
         await cancel_command(callback.message, state)
         await callback.answer()
@@ -832,11 +851,15 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    if not CallbackData.is_time(callback.data):
+    # Извлекаем время
+    time_val = extract_time(callback.data)
+    if not time_val:
+        print(f"❌ DIAG: не удалось извлечь время из '{callback.data}'")
         await callback.answer("Выберите время", show_alert=True)
         return
 
-    time = callback.data[len(CallbackData.TIME_PREFIX):]
+    print(f"✅ DIAG: извлечено время: '{time_val}'")
+
     data = await state.get_data()
     date = data.get('selected_date')
     blood = data.get('blood_group')
@@ -862,7 +885,7 @@ async def process_time(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
 
-    resp = await storage.register(date, blood, time, user.id)
+    resp = await storage.register(date, blood, time_val, user.id)
 
     if resp.status == 'error':
         times_resp = await storage.get_free_times(date, blood)
@@ -1016,7 +1039,6 @@ async def refresh_cache_command(message: types.Message, state: FSMContext):
     if message.from_user.id not in Config.ADMIN_IDS:
         await message.answer("⛔ Нет прав")
         return
-    # Принудительное обновление при следующем запросе get_available_dates
     await message.answer("🔄 Кэш будет обновлён при следующем запросе", reply_markup=get_main_menu_keyboard())
 
 # ========== ЗАПУСК ==========
@@ -1024,7 +1046,7 @@ async def main():
     logging.basicConfig(level=logging.INFO)
 
     print("=" * 50)
-    print("🚀 ЗАПУСК БОТА v5.1")
+    print("🚀 ЗАПУСК БОТА v5.2")
     print("=" * 50)
 
     if Config.MODE in ["GOOGLE", "HYBRID"]:
